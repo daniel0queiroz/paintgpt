@@ -179,3 +179,116 @@ DATABASE_URL=postgresql://user:pass@host/db?sslmode=require
 - Índices em campos frequentemente filtrados
 - Soft delete não necessário para MVP (CASCADE suficiente)
 - Backup automático via Neon
+
+## Testes TDD
+
+### Schema Validation
+
+| Test Case | Description | Expected Result | Status |
+|-----------|-------------|-----------------|--------|
+| Users table exists | Verify `users` table is created with all required columns | Table exists with columns: id, clerk_id, email, credits, created_at, updated_at | PENDING |
+| Users primary key | Verify `id` is UUID primary key | UUID auto-generates via gen_random_uuid() | PENDING |
+| Users clerk_id unique | Verify `clerk_id` has unique constraint | Inserting duplicate clerk_id raises constraint violation | PENDING |
+| Users credits check | Verify `credits` has CHECK constraint >= 0 | Inserting negative credits raises constraint violation | PENDING |
+| Images table exists | Verify `images` table is created with all required columns | Table exists with columns: id, user_id, prompt, image_url, is_public, created_at | PENDING |
+| Images foreign key | Verify `user_id` references users(id) with ON DELETE CASCADE | Deleting user cascades to images | PENDING |
+| Images is_public default | Verify `is_public` defaults to false | New images have is_public = false | PENDING |
+| Purchases table exists | Verify `purchases` table is created with all required columns | Table exists with columns: id, user_id, stripe_session_id, stripe_payment_intent_id, amount_cents, credits, status, created_at, completed_at | PENDING |
+| Purchases status check | Verify `status` has CHECK constraint with allowed values | Only 'pending', 'completed', 'failed', 'refunded' are accepted | PENDING |
+| Purchases amount_cents check | Verify `amount_cents` has CHECK constraint > 0 | Inserting zero or negative amount raises constraint violation | PENDING |
+
+### Indexes
+
+| Test Case | Description | Expected Result | Status |
+|-----------|-------------|-----------------|--------|
+| idx_users_clerk_id | Verify index on users(clerk_id) exists | Query by clerk_id uses index | PENDING |
+| idx_images_user_id | Verify index on images(user_id) exists | Query by user_id uses index | PENDING |
+| idx_images_is_public | Verify partial index on images(is_public) WHERE is_public = true | Public gallery queries use index | PENDING |
+| idx_images_created_at | Verify index on images(created_at DESC) exists | Sorting by created_at uses index | PENDING |
+| idx_purchases_user_id | Verify index on purchases(user_id) exists | Query by user_id uses index | PENDING |
+| idx_purchases_stripe_session | Verify index on purchases(stripe_session_id) exists | Lookup by stripe_session_id uses index | PENDING |
+| idx_purchases_status | Verify index on purchases(status) exists | Filtering by status uses index | PENDING |
+
+### CRUD Operations - Users
+
+| Test Case | Description | Expected Result | Status |
+|-----------|-------------|-----------------|--------|
+| Create user | Insert new user with clerk_id, email | User created with id, credits=0, timestamps set | PENDING |
+| Create user defaults | Insert user without specifying defaults | credits defaults to 0, created_at and updated_at auto-set | PENDING |
+| Read user by id | Query user by id | Returns user object with all fields | PENDING |
+| Read user by clerk_id | Query user by clerk_id | Returns correct user | PENDING |
+| Update user credits | Increment credits by N | credits field updates, updated_at changes | PENDING |
+| Update user email | Change email | email field updates, updated_at changes | PENDING |
+| Delete user | Delete user by id | User and cascading images/purchases are deleted | PENDING |
+| List all users | Query all users | Returns paginated or complete list | PENDING |
+
+### CRUD Operations - Images
+
+| Test Case | Description | Expected Result | Status |
+|-----------|-------------|-----------------|--------|
+| Create image | Insert new image with user_id, prompt, image_url | Image created with is_public=false, created_at set | PENDING |
+| Create image required fields | Insert without prompt or image_url | Constraint violation (NOT NULL) | PENDING |
+| Read image by id | Query image by id | Returns image object | PENDING |
+| Read user images | Query images WHERE user_id = $1 | Returns all images for user, ordered by created_at DESC | PENDING |
+| Read public images | Query images WHERE is_public = true | Returns only public images | PENDING |
+| Update image is_public | Change is_public to true | Image marked public, no timestamp change | PENDING |
+| Update image metadata | Update prompt or other fields | Fields update correctly | PENDING |
+| Delete image | Delete by id | Image removed, user and purchases unaffected | PENDING |
+| Cascade delete on user | Delete user | All user's images deleted | PENDING |
+
+### CRUD Operations - Purchases
+
+| Test Case | Description | Expected Result | Status |
+|-----------|-------------|-----------------|--------|
+| Create purchase | Insert new purchase with user_id, amount_cents, credits | Purchase created with status='pending', created_at set, completed_at=null | PENDING |
+| Create purchase stripe_session_id | Insert with stripe_session_id | Unique constraint enforced | PENDING |
+| Create purchase invalid amount | Insert with amount_cents <= 0 | Constraint violation (CHECK amount_cents > 0) | PENDING |
+| Create purchase invalid credits | Insert with credits <= 0 | Constraint violation (CHECK credits > 0) | PENDING |
+| Read purchase by id | Query purchase by id | Returns purchase object | PENDING |
+| Read purchases by user | Query purchases WHERE user_id = $1 | Returns all purchases for user | PENDING |
+| Read purchase by stripe_session | Query by stripe_session_id | Returns correct purchase | PENDING |
+| Update purchase status | Change status to 'completed' | status updates, completed_at sets to NOW() | PENDING |
+| Update purchase invalid status | Try to set status to invalid value | Constraint violation (CHECK status IN (...)) | PENDING |
+| Delete purchase | Delete by id | Purchase removed, user credits unaffected | PENDING |
+| Cascade delete on user | Delete user | All user's purchases deleted | PENDING |
+
+### Transactions
+
+| Test Case | Description | Expected Result | Status |
+|-----------|-------------|-----------------|--------|
+| Debit credit | UPDATE users SET credits = credits - 1 WHERE id = $1 AND credits > 0 | Credits decremented, updated_at changes, transaction atomic | PENDING |
+| Debit insufficient credits | Try to debit when credits = 0 | Update returns 0 rows, credits unchanged | PENDING |
+| Credit after purchase | BEGIN; UPDATE purchase status='completed'; UPDATE user credits += N; COMMIT; | Both updates succeed atomically or both rollback | PENDING |
+| Concurrent debit | Two simultaneous debit operations on same user | Only one succeeds, credits deducted once | PENDING |
+| Purchase refund | Update purchase status='refunded' and remove credits from user | Credits decremented, status changes atomically | PENDING |
+
+### Data Integrity
+
+| Test Case | Description | Expected Result | Status |
+|-----------|-------------|-----------------|--------|
+| Referential integrity users | Insert image with non-existent user_id | Foreign key constraint violation | PENDING |
+| Referential integrity purchases | Insert purchase with non-existent user_id | Foreign key constraint violation | PENDING |
+| Cascade delete images | Delete user, check images table | All user's images deleted | PENDING |
+| Cascade delete purchases | Delete user, check purchases table | All user's purchases deleted | PENDING |
+| Timestamp accuracy | Insert record, check created_at | created_at is within 1 second of NOW() | PENDING |
+| Timestamp update | Update record, check updated_at | updated_at changes to current time | PENDING |
+| UUID uniqueness | Insert 100 users | All IDs are unique | PENDING |
+
+### Query Performance
+
+| Test Case | Description | Expected Result | Status |
+|-----------|-------------|-----------------|--------|
+| Public gallery pagination | Query top 20 public images ordered by created_at DESC LIMIT 20 OFFSET 0 | Query returns in < 100ms, uses index | PENDING |
+| User images sorted | Query user's images ordered by created_at DESC | Query returns in < 50ms, uses index | PENDING |
+| Credits lookup | Query user by clerk_id for credit check | Query returns in < 20ms, uses index | PENDING |
+| Purchase lookup by stripe | Query purchase by stripe_session_id | Query returns in < 20ms, uses index | PENDING |
+| Pending purchases | Query all purchases WHERE status = 'pending' | Query returns in < 100ms, uses index | PENDING |
+
+### Migration Testing
+
+| Test Case | Description | Expected Result | Status |
+|-----------|-------------|-----------------|--------|
+| Initial migration | Run 0000_initial.sql | All 3 tables created with all indexes | PENDING |
+| Migration idempotency | Run migration twice | Second run fails gracefully (IF NOT EXISTS) or succeeds without error | PENDING |
+| Rollback migration | Rollback to pre-migration state | All tables and indexes removed | PENDING |
+| Migration on fresh DB | Apply migration to empty database | Clean schema created with no errors | PENDING |
